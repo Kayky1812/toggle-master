@@ -207,6 +207,19 @@ resource "helm_release" "argocd" {
     name  = "configs.params.server\\.insecure"
     value = "true"
   }
+
+  # Otimização para instâncias t3.micro (1GB RAM - AWS Free Tier):
+  # Desativa controladores opcionais (Dex SSO e Notifications) que não são usados
+  # no desafio, economizando 2 Pods e ~200 MB de memória no cluster.
+  set {
+    name  = "dex.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "notifications.enabled"
+    value = "false"
+  }
 }
 
 resource "helm_release" "ingress_nginx" {

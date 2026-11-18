@@ -47,15 +47,15 @@ variable "eks_cluster_version" {
 }
 
 variable "eks_node_instance_types" {
-  description = "Tipos de instância EC2 para o Node Group do EKS"
+  description = "Tipos de instância EC2 para o Node Group do EKS (t3.micro para compatibilidade com AWS Free Tier)"
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["t3.micro"]
 }
 
 variable "eks_node_desired_size" {
-  description = "Quantidade desejada de nós no Node Group"
+  description = "Quantidade desejada de nós no Node Group (4 nós t3.micro para distribuir memória de 1GB/nó)"
   type        = number
-  default     = 2
+  default     = 4
 }
 
 variable "eks_node_min_size" {
@@ -67,7 +67,7 @@ variable "eks_node_min_size" {
 variable "eks_node_max_size" {
   description = "Quantidade máxima de nós no Node Group"
   type        = number
-  default     = 4
+  default     = 5
 }
 
 variable "db_instance_class" {

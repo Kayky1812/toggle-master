@@ -65,3 +65,16 @@ tech-challenge-fase-2/
 ├── RELATORIO_ENTREGA_FASE3.md          # Relatório de entrega (decisões, desafios e custos AWS)
 └── README.md                           # Documentação geral da arquitetura
 ```
+
+---
+
+## 3. Nota Técnica: Adaptação para `t3.micro` (AWS Free Tier)
+
+Devido à limitação da conta **AWS Free Tier** (que restringe o uso de instâncias `t3.medium` / `t3.large`), os nós de trabalho do EKS e os bancos foram configurados com `t3.micro` (`eks_node_instance_types = ["t3.micro"]`, `db_instance_class = "db.t3.micro"` e `redis_node_type = "cache.t3.micro"`).
+
+Como a instância `t3.micro` possui apenas **1 GB de RAM** e **2 placas de rede (ENIs) com 2 IPs cada**, o Amazon EKS impõe por padrão um limite de **apenas 4 Pods por nó** (sendo 2 ocupados por `aws-node` e `kube-proxy`), o que impediria a subida simultânea do CoreDNS, ArgoCD, KEDA, NGINX Ingress e dos 5 microsserviços. Para contornar essa limitação sem sair do Free Tier, foram aplicadas as seguintes configurações no Terraform:
+
+1. **IPv4 Prefix Delegation no `vpc-cni` (`terraform/modules/eks/main.tf`):** O recurso `aws_eks_addon.vpc_cni` habilita `ENABLE_PREFIX_DELEGATION = "true"` e `WARM_PREFIX_TARGET = "1"`, delegando blocos `/28` (16 IPs por slot) nas ENIs das instâncias `t3.micro`.
+2. **Launch Template com `maxPods: 34` (`terraform/modules/eks/main.tf`):** O recurso `aws_launch_template.eks_nodes` injeta um `NodeConfig` (`application/node.eks.aws` para Amazon Linux 2023 `nodeadm`) elevando o limite do Kubelet de 4 para **34 Pods por nó**.
+3. **Distribuição em 4 Nós `t3.micro` (`terraform/variables.tf`):** O Node Group foi ajustado para `eks_node_desired_size = 4` (`max_size = 5`), somando 4 GB de RAM e 8 vCPUs no cluster (consumindo a franquia de 750h/mês gratuitas do Free Tier durante a execução dos testes).
+4. **Otimização do ArgoCD (`terraform/modules/k8s_addons/main.tf`):** Os sub-serviços opcionais `dex` (`dex.enabled = false`) e `notifications` (`notifications.enabled = false`) foram desabilitados via Helm para economizar 2 Pods e ~200 MB de memória no cluster.

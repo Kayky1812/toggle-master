@@ -50,6 +50,14 @@ Para eliminar os problemas operacionais da Fase 2 (deploys manuais via `kubectl 
    * *Desafio:* Como optamos pela arquitetura de Monorepo (mantendo o código-fonte dos microsserviços e a pasta `k8s/` de GitOps no mesmo repositório), o commit automático feito pelo GitHub Actions para atualizar a tag da imagem poderia disparar novamente o próprio workflow em loop.
    * *Decisão:* Configuramos filtros de caminho (`paths: ['<service>/**']`) nos gatilhos dos workflows de cada microsserviço e adicionamos `[skip ci]` na mensagem do commit de atualização do manifesto Kubernetes (`chore(gitops): update <service> image to v1.0.0-<sha> [skip ci]`), isolando o ciclo de CI do ciclo de reconciliação do ArgoCD.
 
+4. **Adaptação do Cluster EKS para Instâncias `t3.micro` (Limitação de Conta AWS Free Tier):**
+   * *Desafio:* Devido às restrições da conta AWS *Free Tier* (que bloqueia o provisionamento de instâncias maiores como `t3.medium`/`t3.large`), foi necessário alterar os Worker Nodes do EKS para `t3.micro`. Entretanto, por padrão na AWS, a instância `t3.micro` possui apenas **1 GB de RAM** e **2 placas de rede (ENIs) com 2 IPs cada**, o que faz o EKS limitar cada nó a **apenas 4 Pods** (dos quais 2 já são consumidos pelo `aws-node` e `kube-proxy`, restando apenas 2 Pods livres por máquina). Sem ajustes, os ~18 Pods da arquitetura (CoreDNS, ArgoCD, KEDA, NGINX Ingress, Metrics Server e os 5 microsserviços) ficariam travados em estado `Pending (Too many pods)` ou sofreriam `OOMKilled`.
+   * *Decisão:* Implementamos 4 ajustes no Terraform (`terraform/modules/eks/main.tf`, `terraform/variables.tf` e `terraform/modules/k8s_addons/main.tf`):
+     1. **Ativação de IPv4 Prefix Delegation no `vpc-cni` (`aws_eks_addon`):** Configuramos `ENABLE_PREFIX_DELEGATION = "true"` e `WARM_PREFIX_TARGET = "1"`, delegando blocos `/28` (16 IPs por prefixo) nas ENIs das instâncias `t3.micro`.
+     2. **Launch Template com `maxPods: 34` no Kubelet (`nodeadm` AL2023):** Criamos um `aws_launch_template` injetando um `NodeConfig` (`application/node.eks.aws`) que sobrescreve o cálculo padrão de 4 Pods do Kubelet para **34 Pods por nó**.
+     3. **Escalonamento Horizontal do Node Group (`desired_size = 4`, `max_size = 5`):** Distribuímos a carga em **4 nós `t3.micro`** (totalizando 8 vCPUs e 4 GB de RAM, mantendo o uso dentro da franquia de 750h/mês do Free Tier durante os testes).
+     4. **Otimização de Memória do ArgoCD:** Desativamos os controladores opcionais `dex` e `notifications` no Helm Chart do ArgoCD (`dex.enabled = false`, `notifications.enabled = false`), economizando 2 Pods e ~200 MB de RAM sem impactar a interface web nem a reconciliação GitOps.
+
 ---
 
 ## 4. Estimativa de Custos Mensais da AWS (AWS Pricing Calculator — Região `us-east-1`)
@@ -60,14 +68,14 @@ Abaixo está o detalhamento da estimativa de custos na região **US East (N. Vir
 | :--- | :--- | :---: | :---: |
 | **Amazon VPC & NAT Gateway** | 1 NAT Gateway (`us-east-1a`) + Elastic IP + Processamento de dados (~10 GB) | 1 | \$33.30 |
 | **Amazon EKS (Control Plane)** | Cluster Kubernetes Gerenciado (`toggle-master-cluster` v1.31) | 1 cluster | \$73.00 |
-| **Amazon EC2 (EKS Worker Nodes)** | Instâncias `t3.medium` (On-Demand, Linux) + 20 GB EBS `gp2` por nó | 2 nós | \$64.77 |
+| **Amazon EC2 (EKS Worker Nodes)** | Instâncias `t3.micro` (On-Demand, Linux, elegíveis ao Free Tier) + 20 GB EBS `gp3` por nó | 4 nós | \$36.79 *(ou \$0.00 até 750h no Free Tier)* |
 | **Amazon Elastic Load Balancing** | Application/Network Load Balancer provisionado pelo NGINX Ingress | 1 LB | \$18.40 |
 | **Amazon RDS for PostgreSQL** | Instâncias `db.t3.micro` (Single-AZ, 20 GB Storage `gp2` cada: `auth`, `flag`, `targeting`) | 3 instâncias | \$45.42 |
 | **Amazon ElastiCache for Redis** | Nó `cache.t3.micro` (`toggle-redis-v2`, 1 nó sem réplica) | 1 cluster | \$12.41 |
 | **Amazon DynamoDB** | Tabela `ToggleMasterAnalytics` (Modo On-Demand `PAY_PER_REQUEST`, < 1M leituras/escritas) | 1 tabela | \$1.25 |
 | **Amazon SQS** | Fila padrão `toggle-master-events` (Primeiros 1M requests gratuitos no Free Tier) | 1 fila | \$0.00 |
 | **Amazon ECR & Amazon S3** | 5 Repositórios ECR (~2 GB imagens) + 1 Bucket S3 para `terraform.tfstate` | 5 repos + 1 bucket | \$0.25 |
-| **TOTAL MENSAL ESTIMADO (24x7)** | **Infraestrutura Completa da Fase 3** | — | **\$248.80 / mês** |
+| **TOTAL MENSAL ESTIMADO (24x7)** | **Infraestrutura Completa da Fase 3** | — | **\$220.82 / mês** |
 
 *(Observação: Executando `terraform destroy` após os testes e gravação do vídeo, o custo em repouso cai para **\$0.00/h**, mantendo apenas frações de centavos do arquivo de estado no S3).*
 

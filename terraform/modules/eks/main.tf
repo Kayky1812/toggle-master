@@ -129,6 +129,67 @@ resource "aws_eks_cluster" "main" {
 }
 
 # ============================================================================
+# Add-on VPC CNI com Prefix Delegation habilitado (Suporte a t3.micro Free Tier)
+# Por padrão, uma instância t3.micro (2 ENIs x 2 IPs) suporta apenas 4 Pods.
+# Com ENABLE_PREFIX_DELEGATION = true, a AWS delega prefixos /28 (16 IPs) por
+# slot na ENI, permitindo elevar o limite para até 34 Pods por nó t3.micro.
+# ============================================================================
+resource "aws_eks_addon" "vpc_cni" {
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "vpc-cni"
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  configuration_values = jsonencode({
+    env = {
+      ENABLE_PREFIX_DELEGATION = "true"
+      WARM_PREFIX_TARGET       = "1"
+    }
+  })
+
+  depends_on = [
+    aws_eks_cluster.main
+  ]
+}
+
+# ============================================================================
+# Launch Template para configurar maxPods: 34 no Kubelet (AL2023 nodeadm)
+# Necessário porque o Kubelet calcula maxPods=4 por padrão em t3.micro caso
+# não seja sobrescrito via NodeConfig.
+# ============================================================================
+resource "aws_launch_template" "eks_nodes" {
+  name_prefix = "${var.cluster_name}-nodes-"
+  description = "Launch Template para permitir ate 34 Pods por no t3.micro com Prefix Delegation (AWS Free Tier)"
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size           = 20
+      volume_type           = "gp3"
+      delete_on_termination = true
+    }
+  }
+
+  user_data = base64encode(<<-EOT
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="//"
+
+--//
+Content-Type: application/node.eks.aws
+
+---
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  kubelet:
+    config:
+      maxPods: 34
+--//--
+EOT
+  )
+}
+
+# ============================================================================
 # Managed Node Group do EKS
 # ============================================================================
 resource "aws_eks_node_group" "standard_workers" {
@@ -136,8 +197,13 @@ resource "aws_eks_node_group" "standard_workers" {
   node_group_name = "standard-workers"
   node_role_arn   = aws_iam_role.eks_node_role.arn
   subnet_ids      = var.private_subnet_ids
+  ami_type        = "AL2023_x86_64_STANDARD"
   instance_types  = var.node_instance_types
-  disk_size       = 20
+
+  launch_template {
+    id      = aws_launch_template.eks_nodes.id
+    version = aws_launch_template.eks_nodes.latest_version
+  }
 
   scaling_config {
     desired_size = var.node_desired_size
@@ -150,6 +216,7 @@ resource "aws_eks_node_group" "standard_workers" {
   }
 
   depends_on = [
+    aws_eks_addon.vpc_cni,
     aws_iam_role_policy_attachment.eks_worker_node_policy,
     aws_iam_role_policy_attachment.eks_cni_policy,
     aws_iam_role_policy_attachment.eks_ecr_readonly,
