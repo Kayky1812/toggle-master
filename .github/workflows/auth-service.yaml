@@ -96,7 +96,7 @@ jobs:
           $(go env GOPATH)/bin/gosec -severity high ./...
 
       - name: SCA - Rodar Trivy em modo FS (Software Composition Analysis)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '${{ env.SERVICE_NAME }}'
@@ -130,7 +130,7 @@ jobs:
           docker build -t ${{ env.SERVICE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }} ./${{ env.SERVICE_NAME }}
 
       - name: Container Scan com Trivy (Bloqueia se houver vulnerabilidade CRÍTICA)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: '${{ env.SERVICE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }}'
           format: 'table'
