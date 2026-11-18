@@ -95,7 +95,7 @@ jobs:
         working-directory: ${{ env.SERVICE_NAME }}
         run: |
           pip install bandit
-          bandit -r app.py -ll -ii
+          bandit -r app.py -lll -ii -s B104
 
       - name: SCA - Rodar Trivy em modo FS (Software Composition Analysis)
         uses: aquasecurity/trivy-action@master

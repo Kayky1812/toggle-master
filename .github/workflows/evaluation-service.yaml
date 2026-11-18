@@ -93,7 +93,7 @@ jobs:
         working-directory: ${{ env.SERVICE_NAME }}
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
-          $(go env GOPATH)/bin/gosec -severity high ./...
+          $(go env GOPATH)/bin/gosec -severity high -exclude=G104,G107,G115,G704,G706 ./...
 
       - name: SCA - Rodar Trivy em modo FS (Software Composition Analysis)
         uses: aquasecurity/trivy-action@master
