@@ -1,0 +1,20 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: analytics-sqs-scaledobject
+  namespace: toggle-master
+spec:
+  scaleTargetRef:
+    name: analytics-service
+  pollingInterval: 5   # Verifica o tamanho da fila SQS a cada 5 segundos
+  cooldownPeriod: 30   # Aguarda 30s após a fila esvaziar para reduzir os pods
+  minReplicaCount: 1   # Mantém 1 pod ativo (e escala até 5 quando a fila acumula mensagens)
+  maxReplicaCount: 5
+  triggers:
+  - type: aws-sqs-queue
+    metadata:
+      queueURL: https://sqs.us-east-1.amazonaws.com/706757000198/toggle-master-events
+      queueLength: "5"         # Adiciona 1 pod a cada 5 mensagens na fila SQS
+      awsRegion: "us-east-1"
+      identityOwner: operator  # Utiliza a IAM Role dos nós do EKS (AmazonSQSFullAccess)
+

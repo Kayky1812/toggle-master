@@ -1,0 +1,173 @@
+name: CI/CD & DevSecOps - targeting-service
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'targeting-service/**'
+      - '.github/workflows/targeting-service.yaml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'targeting-service/**'
+      - '.github/workflows/targeting-service.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SERVICE_NAME: targeting-service
+  MANIFEST_FILE: k8s/04-targeting-service.yaml
+  AWS_REGION: us-east-1
+
+jobs:
+  # ==========================================================================
+  # 1. Build & Unit Test
+  # ==========================================================================
+  build-and-test:
+    name: 1. Build & Unit Test (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.SERVICE_NAME }}
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: '${{ env.SERVICE_NAME }}/requirements.txt'
+
+      - name: Instalar dependências e Compilar bytecode
+        run: |
+          pip install -r requirements.txt pytest
+          python -m py_compile app.py
+
+      - name: Executar Testes Unitários (pytest)
+        run: pytest -v
+
+  # ==========================================================================
+  # 2. Linter / Static Analysis
+  # ==========================================================================
+  linter:
+    name: 2. Linter (flake8)
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    defaults:
+      run:
+        working-directory: ${{ env.SERVICE_NAME }}
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Rodar Flake8 Linter
+        run: |
+          pip install flake8
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  # ==========================================================================
+  # 3. Security Scan (SAST & SCA) - Regra de Bloqueio em CRÍTICA / SAST
+  # ==========================================================================
+  security-scan:
+    name: 3. Security Scan (SAST Bandit & SCA Trivy)
+    runs-on: ubuntu-latest
+    needs: linter
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: SAST - Rodar Bandit (Static Application Security Testing)
+        working-directory: ${{ env.SERVICE_NAME }}
+        run: |
+          pip install bandit
+          bandit -r app.py -ll -ii
+
+      - name: SCA - Rodar Trivy em modo FS (Software Composition Analysis)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '${{ env.SERVICE_NAME }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL'
+
+  # ==========================================================================
+  # 4. Docker Build, Container Scan, ECR Push & GitOps Update
+  # ==========================================================================
+  docker-and-gitops:
+    name: 4. Docker Build, Scan, Push ECR & GitOps
+    runs-on: ubuntu-latest
+    needs: security-scan
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout do repositório (com histórico para GitOps)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Definir Tag com Commit Hash (v1.0.0-<sha>)
+        id: vars
+        run: |
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          echo "IMAGE_TAG=v1.0.0-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Construir Imagem Docker local
+        run: |
+          docker build -t ${{ env.SERVICE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }} ./${{ env.SERVICE_NAME }}
+
+      - name: Container Scan com Trivy (Bloqueia se houver vulnerabilidade CRÍTICA)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: '${{ env.SERVICE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL'
+
+      - name: Configurar Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag e Push da Imagem para o AWS ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.vars.outputs.IMAGE_TAG }}
+        run: |
+          docker tag ${{ env.SERVICE_NAME }}:${IMAGE_TAG} ${ECR_REGISTRY}/${{ env.SERVICE_NAME }}:${IMAGE_TAG}
+          docker push ${ECR_REGISTRY}/${{ env.SERVICE_NAME }}:${IMAGE_TAG}
+
+      - name: GitOps - Atualizar Tag da Imagem no Manifesto Kubernetes
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.vars.outputs.IMAGE_TAG }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          sed -i "s|image: .*/${{ env.SERVICE_NAME }}:.*|image: ${ECR_REGISTRY}/${{ env.SERVICE_NAME }}:${IMAGE_TAG}|g" ${{ env.MANIFEST_FILE }}
+          git add ${{ env.MANIFEST_FILE }}
+          git diff --staged --quiet || (git commit -m "chore(gitops): update ${{ env.SERVICE_NAME }} image to ${IMAGE_TAG} [skip ci]" && git push origin main)
+

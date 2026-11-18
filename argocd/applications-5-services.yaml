@@ -1,0 +1,107 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: auth-service
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/SEU_USUARIO/tech-challenge-fase-2.git
+    targetRevision: main
+    path: k8s
+    directory:
+      include: "{00-namespace.yaml,02-auth-service.yaml,07-ingress.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: toggle-master
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flag-service
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/SEU_USUARIO/tech-challenge-fase-2.git
+    targetRevision: main
+    path: k8s
+    directory:
+      include: "{03-flag-service.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: toggle-master
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: targeting-service
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/SEU_USUARIO/tech-challenge-fase-2.git
+    targetRevision: main
+    path: k8s
+    directory:
+      include: "{04-targeting-service.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: toggle-master
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: evaluation-service
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/SEU_USUARIO/tech-challenge-fase-2.git
+    targetRevision: main
+    path: k8s
+    directory:
+      include: "{05-evaluation-service.yaml,08-hpa-evaluation.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: toggle-master
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: analytics-service
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/SEU_USUARIO/tech-challenge-fase-2.git
+    targetRevision: main
+    path: k8s
+    directory:
+      include: "{06-analytics-service.yaml,09-keda-analytics.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: toggle-master
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+

@@ -1,0 +1,29 @@
+# Binários compilados Go
+auth-service/auth-service
+evaluation-service/evaluation-service
+*.exe
+*.out
+
+# Cache e ambientes virtuais Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Variáveis de ambiente locais
+.env
+*.env
+
+# Terraform (caso inicializado localmente)
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Arquivos de sistema / IDE
+.DS_Store
+Thumbs.db
+.idea/
+
