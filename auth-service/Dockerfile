@@ -1,5 +1,5 @@
-# Etapa 1: Builder - Compila o código Go
-FROM golang:1.22 AS builder
+# Etapa 1: Builder - Compila o código Go (1.26 corrige CVE-2025-68121 na stdlib)
+FROM golang:1.26 AS builder
 
 WORKDIR /app
 
