@@ -87,6 +87,8 @@ module "k8s_addons" {
   db_password            = var.db_password
   master_key             = var.master_key
   service_api_key        = var.service_api_key
+  oidc_provider_arn      = module.eks.oidc_provider_arn
+  oidc_provider_url      = module.eks.oidc_provider_url
 
   depends_on = [
     module.eks,

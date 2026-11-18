@@ -58,6 +58,10 @@ Para eliminar os problemas operacionais da Fase 2 (deploys manuais via `kubectl 
      3. **Escalonamento Horizontal do Node Group (`desired_size = 4`, `max_size = 5`):** Distribuímos a carga em **4 nós `t3.micro`** (totalizando 8 vCPUs e 4 GB de RAM, mantendo o uso dentro da franquia de 750h/mês do Free Tier durante os testes).
      4. **Otimização de Memória do ArgoCD:** Desativamos os controladores opcionais `dex` e `notifications` no Helm Chart do ArgoCD (`dex.enabled = false`, `notifications.enabled = false`), economizando 2 Pods e ~200 MB de RAM sem impactar a interface web nem a reconciliação GitOps.
 
+5. **Autenticação Segura via IRSA (IAM Roles for Service Accounts) sem Chaves Estáticas:**
+   * *Desafio:* Em nós EKS com Amazon Linux 2023, o bloqueio de IMDSv2 para containers (`hop limit = 1`) impedia que o `analytics-service`, o `evaluation-service` e o operador do KEDA acessassem a fila SQS e a tabela DynamoDB usando o perfil da instância EC2 (`Unable to locate credentials`).
+   * *Decisão:* Em vez de injetar `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` estáticas em Secrets do Kubernetes, implementamos **IRSA (IAM Roles for Service Accounts)** 100% via Terraform: criamos o `aws_iam_openid_connect_provider` associado ao issuer OIDC do cluster EKS, provisionamos a IAM Role `toggle-master-irsa-role` com política dedicada para SQS e DynamoDB confiando nas ServiceAccounts `toggle-master-sa` (namespace `toggle-master`) e `keda-operator` (namespace `keda`), e vinculamos `serviceAccountName: toggle-master-sa` nos manifestos `k8s/05-evaluation-service.yaml` e `k8s/06-analytics-service.yaml`.
+
 ---
 
 ## 4. Estimativa de Custos Mensais da AWS (AWS Pricing Calculator — Região `us-east-1`)

@@ -21,6 +21,8 @@ env/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+tfplan
+*.tfplan
 
 # Arquivos de sistema / IDE
 .DS_Store

@@ -45,15 +45,79 @@ variable "service_api_key" {
   sensitive = true
 }
 
+variable "oidc_provider_arn" {
+  type = string
+}
+
+variable "oidc_provider_url" {
+  type = string
+}
+
 # ============================================================================
-# 1. Namespace toggle-master + ConfigMap e Secret injetados direto pelo Terraform
-#    (Resolve o problema da Fase 2 de credenciais passadas em arquivos de texto!)
+# 1. Namespace toggle-master, IRSA (IAM Role + ServiceAccount) + ConfigMap e Secret
+#    (Resolve o problema da Fase 2 de credenciais passadas em arquivos de texto
+#     e autentica evaluation-service, analytics-service e KEDA via OIDC/IRSA!)
 # ============================================================================
 resource "kubernetes_namespace" "toggle_master" {
   metadata {
     name = "toggle-master"
     labels = {
       "app.kubernetes.io/managed-by" = "Terraform"
+    }
+  }
+}
+
+resource "aws_iam_role" "toggle_master_irsa" {
+  name = "toggle-master-irsa-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = var.oidc_provider_arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "${replace(var.oidc_provider_url, "https://", "")}:aud" = "sts.amazonaws.com"
+            "${replace(var.oidc_provider_url, "https://", "")}:sub" = [
+              "system:serviceaccount:toggle-master:toggle-master-sa",
+              "system:serviceaccount:keda:keda-operator"
+            ]
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "toggle_master_irsa_policy" {
+  name = "toggle-master-sqs-dynamodb-policy"
+  role = aws_iam_role.toggle_master_irsa.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:*",
+          "dynamodb:*"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "kubernetes_service_account" "toggle_master_sa" {
+  metadata {
+    name      = "toggle-master-sa"
+    namespace = kubernetes_namespace.toggle_master.metadata[0].name
+    annotations = {
+      "eks.amazonaws.com/role-arn" = aws_iam_role.toggle_master_irsa.arn
     }
   }
 }
@@ -251,5 +315,10 @@ resource "helm_release" "keda" {
   namespace        = "keda"
   create_namespace = true
   version          = "2.15.1"
+
+  set {
+    name  = "serviceAccount.operator.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = aws_iam_role.toggle_master_irsa.arn
+  }
 }
 

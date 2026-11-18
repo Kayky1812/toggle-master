@@ -15,6 +15,7 @@ spec:
       labels:
         app: evaluation-service
     spec:
+      serviceAccountName: toggle-master-sa
       containers:
       - name: evaluation-service
         image: 706757000198.dkr.ecr.us-east-1.amazonaws.com/evaluation-service:v1.0.0-b99737d

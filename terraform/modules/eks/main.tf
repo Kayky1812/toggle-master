@@ -129,6 +129,17 @@ resource "aws_eks_cluster" "main" {
 }
 
 # ============================================================================
+# OIDC Provider do Cluster EKS para IRSA (IAM Roles for Service Accounts)
+# Permite que Pods no Kubernetes assumam IAM Roles temporárias via Web Identity
+# sem necessidade de credenciais estáticas da AWS nos containers.
+# ============================================================================
+resource "aws_iam_openid_connect_provider" "eks" {
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["9e99a48a9960b14926bb7f3b02e22da2b0ab7280"]
+  url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
+}
+
+# ============================================================================
 # Add-on VPC CNI com Prefix Delegation habilitado (Suporte a t3.micro Free Tier)
 # Por padrão, uma instância t3.micro (2 ENIs x 2 IPs) suporta apenas 4 Pods.
 # Com ENABLE_PREFIX_DELEGATION = true, a AWS delega prefixos /28 (16 IPs) por
@@ -239,5 +250,13 @@ output "cluster_certificate_authority_data" {
 
 output "cluster_security_group_id" {
   value = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
+}
+
+output "oidc_provider_arn" {
+  value = aws_iam_openid_connect_provider.eks.arn
+}
+
+output "oidc_provider_url" {
+  value = aws_iam_openid_connect_provider.eks.url
 }
 
