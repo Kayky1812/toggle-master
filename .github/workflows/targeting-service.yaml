@@ -99,6 +99,8 @@ jobs:
 
       - name: SCA - Rodar Trivy em modo FS (Software Composition Analysis)
         uses: aquasecurity/trivy-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           scan-type: 'fs'
           scan-ref: '${{ env.SERVICE_NAME }}'
@@ -133,6 +135,8 @@ jobs:
 
       - name: Container Scan com Trivy (Bloqueia se houver vulnerabilidade CRÍTICA)
         uses: aquasecurity/trivy-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: '${{ env.SERVICE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }}'
           format: 'table'
@@ -166,8 +170,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
-          sed -i "s|image: .*/${{ env.SERVICE_NAME }}:.*|image: ${ECR_REGISTRY}/${{ env.SERVICE_NAME }}:${IMAGE_TAG}|g" ${{ env.MANIFEST_FILE }}
-          git add ${{ env.MANIFEST_FILE }}
-          git diff --staged --quiet || (git commit -m "chore(gitops): update ${{ env.SERVICE_NAME }} image to ${IMAGE_TAG} [skip ci]" && git push origin main)
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main
+            sed -i "s|image: .*/${{ env.SERVICE_NAME }}:.*|image: ${ECR_REGISTRY}/${{ env.SERVICE_NAME }}:${IMAGE_TAG}|g" ${{ env.MANIFEST_FILE }}
+            git add ${{ env.MANIFEST_FILE }}
+            if git diff --staged --quiet; then
+              break
+            fi
+            git commit -m "chore(gitops): update ${{ env.SERVICE_NAME }} image to ${IMAGE_TAG} [skip ci]"
+            if git push origin main; then
+              break
+            fi
+            git reset --hard origin/main
+            sleep 3
+          done
 
