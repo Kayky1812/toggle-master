@@ -2,9 +2,6 @@
 
 O **ToggleMaster** é uma plataforma de gerenciamento e avaliação de *Feature Flags* em tempo real baseada em 5 microsserviços na nuvem **AWS** utilizando **Amazon EKS (Kubernetes)**. Na **Fase 3**, todos os scripts manuais e arquivos legados da Fase 2 foram eliminados e substituídos por uma arquitetura **100% declarativa** baseada em **Terraform (IaC)**, **Pipelines DevSecOps (GitHub Actions)** e **Entrega Contínua via GitOps (ArgoCD)**.
 
-> * Para o passo a passo de execução dos comandos (`terraform plan/apply`, teste de falha/sucesso da pipeline DevSecOps e sincronização no ArgoCD), consulte **[TESTES.md](./TESTES.md)**.
-> * Para o relatório de entrega da Fase 3 (decisões arquiteturais, desafios e estimativa de custos AWS), consulte **[RELATORIO_ENTREGA_FASE3.md](./RELATORIO_ENTREGA_FASE3.md)**.
-
 ---
 
 ## 1. Como os Problemas da Fase 2 Foram Resolvidos na Fase 3
@@ -61,8 +58,6 @@ tech-challenge-fase-2/
 ├── targeting-service/                  # Microsserviço 3 (Python :8003) + Testes Unitários + SQL
 ├── evaluation-service/                 # Microsserviço 4 (Go :8004) + Testes Unitários
 ├── analytics-service/                  # Microsserviço 5 (Python :8005) + Testes Unitários
-├── TESTES.md                           # Roteiro de comandos para a demonstração em vídeo da Fase 3
-├── RELATORIO_ENTREGA_FASE3.md          # Relatório de entrega (decisões, desafios e custos AWS)
 └── README.md                           # Documentação geral da arquitetura
 ```
 
